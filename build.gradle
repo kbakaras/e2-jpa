@@ -1,0 +1,44 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
+
+group 'ru.kbakaras.e2'
+version '0.4.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+repositories {
+    maven {
+        url "http://apps-srv-1/nexus/content/repositories/kbakaras"
+    }
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'ru.kbakaras.e2',                  name: 'e2-message',            version: '0.4.0-SNAPSHOT', changing: true
+    compile group: 'org.hibernate.javax.persistence', name: 'hibernate-jpa-2.1-api', version: '1.0.0.Final'
+
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    repositories {
+        maven {
+            url "http://apps-srv-1/nexus/content/repositories/kbakaras"
+        }
+    }
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+}
