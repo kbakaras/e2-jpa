@@ -13,7 +13,10 @@ import java.util.UUID;
 import java.util.function.Function;
 
 public class E2Metamodel {
-    @Resource private E2SimpleSerializers simpleSerializers;
+    @Resource
+    private E2SimpleSerializers simpleSerializers;
+    @Resource
+    private E2SimpleDeserializers simpleDeserializers;
 
     private static class EntityTreat {
         public final Function<Object, UUID> uidGetter;
@@ -36,6 +39,9 @@ public class E2Metamodel {
         return new ElementReader(element);
     }
 
+    public ElementWriter write(Object element) {
+        return new ElementWriter(element);
+    }
 
     public class ElementReader implements Iterable<ElementReader.AttributeReader> {
         private Object element;
@@ -119,15 +125,15 @@ public class E2Metamodel {
      * Позволяет сопоставить с классом сущности функцию, которая умеет определять uid элементов данной сущности.
      * Это нужно в тех случаях, когда uid не находится в идентификаторе (первичном ключе).<br/>
      * Если для класса сущности указано данное сопоставление, при сериализации признак synth не будет установлен.
+     *
      * @param entityClass Класс сущности
-     * @param getter Функция, которая будет извлекать uid.
-     * @param <T> Для удобства написания лямбд функция параметризирована.
+     * @param getter      Функция, которая будет извлекать uid.
+     * @param <T>         Для удобства написания лямбд функция параметризирована.
      */
     @SuppressWarnings("unchecked")
     public <T> void registerUidGetter(Class<T> entityClass, Function<T, UUID> getter) {
         treats.put(entityClass, new EntityTreat((Function<Object, UUID>) getter, false));
     }
-
 
     private EntityTreat treat(Class entityClass) {
         EntityTreat treat = treats.get(entityClass);
@@ -151,4 +157,61 @@ public class E2Metamodel {
     }
 
     private static EntityTreat SYNTH = new EntityTreat(element -> UUID.randomUUID(), true);
+
+    public class ElementWriter implements Iterable<ElementWriter.AttributeWriter> {
+        private Object element;
+        private EntityType entity;
+
+        private ElementWriter(Object element) {
+            this.element = element;
+            this.entity = metamodel.entity(element.getClass());
+        }
+
+        @Override
+        public Iterator<ElementWriter.AttributeWriter> iterator() {
+            return new Iterator<ElementWriter.AttributeWriter>() {
+                @SuppressWarnings("unchecked")
+                private Iterator<Attribute> iter = entity.getAttributes().iterator();
+
+                @Override
+                public boolean hasNext() {
+                    return iter.hasNext();
+                }
+
+                @Override
+                public ElementWriter.AttributeWriter next() {
+                    return new ElementWriter.AttributeWriter(iter.next());
+                }
+            };
+        }
+
+        public class AttributeWriter {
+            private Attribute attribute;
+
+            public AttributeWriter(Attribute attribute) {
+                this.attribute = attribute;
+            }
+
+            public boolean isAssociation() {
+                return attribute.isAssociation();
+            }
+
+            public String name() {
+                return attribute.getName();
+            }
+
+            public void setValue(Object value) {
+                Field field = ((Field) attribute.getJavaMember());
+                try {
+                    field.set(element, value);
+                } catch (IllegalAccessException e) {
+                    throw new E2DeserializationException(e);
+                }
+            }
+
+            public void setSimpleValue(String value) {
+                setValue(simpleDeserializers.attributeValue(attribute, value));
+            }
+        }
+    }
 }
