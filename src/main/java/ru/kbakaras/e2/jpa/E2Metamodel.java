@@ -6,9 +6,13 @@ import javax.persistence.metamodel.Attribute;
 import javax.persistence.metamodel.EntityType;
 import javax.persistence.metamodel.Metamodel;
 import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -18,18 +22,8 @@ public class E2Metamodel {
     @Resource
     private E2SimpleDeserializers simpleDeserializers;
 
-    private static class EntityTreat {
-        public final Function<Object, UUID> uidGetter;
-        public boolean synth;
-
-        public EntityTreat(Function<Object, UUID> uidGetter, boolean synth) {
-            this.uidGetter = uidGetter;
-            this.synth = synth;
-        }
-    }
-
     private Metamodel metamodel;
-    private Map<Class, EntityTreat> treats = new HashMap<>();
+    private Map<Class, EntitySetup> setups = new HashMap<>();
 
     public E2Metamodel(EntityManagerFactory emf) {
         this.metamodel = emf.getMetamodel();
@@ -46,6 +40,7 @@ public class E2Metamodel {
     public class ElementReader implements Iterable<ElementReader.AttributeReader> {
         private Object element;
         private EntityType entity;
+        private EntitySetup setup;
 
         private boolean synth;
         private UUID uid;
@@ -54,10 +49,14 @@ public class E2Metamodel {
             this.element = element;
             this.entity = metamodel.entity(element.getClass());
 
-            EntityTreat treat = treat(element.getClass());
-            this.synth = treat.synth;
-            this.uid = treat.uidGetter.apply(element);
+            setup = getSetup(element.getClass());
+            this.synth = setup.synth();
+            this.uid = setup.getUid(element);
 
+            if (this.uid == null) {
+                this.uid = UUID.randomUUID();
+                this.synth = true;
+            }
         }
 
         public String entityName() {
@@ -76,16 +75,19 @@ public class E2Metamodel {
         public Iterator<AttributeReader> iterator() {
             return new Iterator<AttributeReader>() {
                 @SuppressWarnings("unchecked")
-                private Iterator<Attribute> iter = entity.getAttributes().iterator();
+                private Iterator<Attribute> iterator = ((Set<Attribute>) entity.getAttributes())
+                        .stream()
+                        .filter(attribute -> !setup.skipped().contains(attribute.getName()))
+                        .iterator();
 
                 @Override
                 public boolean hasNext() {
-                    return iter.hasNext();
+                    return iterator.hasNext();
                 }
 
                 @Override
                 public AttributeReader next() {
-                    return new AttributeReader(iter.next());
+                    return new AttributeReader(iterator.next());
                 }
             };
         }
@@ -102,6 +104,10 @@ public class E2Metamodel {
                 return attribute.isAssociation();
             }
 
+            public boolean isCollection() {
+                return attribute.isCollection();
+            }
+
             public String name() {
                 return attribute.getName();
             }
@@ -109,6 +115,14 @@ public class E2Metamodel {
             public Object value() {
                 try {
                     return ((Field) attribute.getJavaMember()).get(element);
+                } catch (IllegalAccessException e) {
+                    throw new E2SerializationException(e);
+                }
+            }
+
+            public Collection collection() {
+                try {
+                    return (Collection) ((Field) attribute.getJavaMember()).get(element);
                 } catch (IllegalAccessException e) {
                     throw new E2SerializationException(e);
                 }
@@ -125,42 +139,90 @@ public class E2Metamodel {
     }
 
 
-    /**
-     * Позволяет сопоставить с классом сущности функцию, которая умеет определять uid элементов данной сущности.
-     * Это нужно в тех случаях, когда uid не находится в идентификаторе (первичном ключе).<br/>
-     * Если для класса сущности указано данное сопоставление, при сериализации признак synth не будет установлен.
-     *
-     * @param entityClass Класс сущности
-     * @param getter      Функция, которая будет извлекать uid.
-     * @param <T>         Для удобства написания лямбд функция параметризирована.
-     */
-    @SuppressWarnings("unchecked")
-    public <T> void registerUidGetter(Class<T> entityClass, Function<T, UUID> getter) {
-        treats.put(entityClass, new EntityTreat((Function<Object, UUID>) getter, false));
+    public <T> EntitySetup<T> setup(Class<T> entityClass) {
+        @SuppressWarnings("unchecked")
+        EntitySetup<T> setup = setups.get(entityClass);
+        if (setup == null) {
+            setup = new EntitySetup<>();
+            setups.put(entityClass, setup);
+        }
+        return setup;
     }
 
-    private EntityTreat treat(Class entityClass) {
-        EntityTreat treat = treats.get(entityClass);
-        if (treat == null) {
+
+    @SuppressWarnings("unchecked")
+    private EntitySetup getSetup(Class entityClass) {
+        EntitySetup setup = setups.get(entityClass);
+        if (setup == null) {
             EntityType entity = metamodel.entity(entityClass);
-            boolean synth = !UUID.class.equals(entity.getIdType().getJavaType());
-            if (!synth) {
-                treat = new EntityTreat(element -> {
+            setup = new EntitySetup();
+
+            boolean idIsUID = UUID.class.equals(entity.getIdType().getJavaType());
+            if (idIsUID) {
+                Field uidField = (Field) entity.getId(UUID.class).getJavaMember();
+                setup.uidGetter(element -> {
                     try {
-                        return (UUID) ((Field) entity.getId(UUID.class).getJavaMember()).get(element);
+                        return uidField.get(element);
                     } catch (IllegalAccessException e) {
                         throw new E2SerializationException(e);
                     }
-                }, synth);
-            } else {
-                treat = SYNTH;
+                });
             }
-            treats.put(entityClass, treat);
         }
-        return treat;
+        return setup;
     }
 
-    private static EntityTreat SYNTH = new EntityTreat(element -> UUID.randomUUID(), true);
+
+    public static class EntitySetup<T> {
+        private boolean valid = false;
+
+        private boolean synth;
+        private Function<Object, UUID> uidGetter;
+        private Set<String> skip = new HashSet<>();
+
+        EntitySetup() {}
+
+        private void validate() {
+            if (!valid) {
+                if (uidGetter != null) {
+                    synth = false;
+
+                } else {
+                    synth = true;
+                    uidGetter = element -> UUID.randomUUID();
+                }
+
+                valid = true;
+            }
+        }
+
+
+        @SuppressWarnings("unchecked")
+        public EntitySetup<T> uidGetter(Function<T, UUID> uidGetter) {
+            this.uidGetter = (Function<Object, UUID>) uidGetter;
+            return this;
+        }
+
+        public EntitySetup<T> skip(String... attributeNames) {
+            skip.addAll(Arrays.asList(attributeNames));
+            return this;
+        }
+
+
+        boolean synth() {
+            validate();
+            return synth;
+        }
+
+        UUID getUid(Object element) {
+            validate();
+            return uidGetter.apply(element);
+        }
+
+        Set<String> skipped() {
+            return skip;
+        }
+   }
 
     public class ElementWriter implements Iterable<ElementWriter.AttributeWriter> {
         private Object element;
