@@ -16,7 +16,7 @@ import javax.persistence.EntityManager;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * project: e2-jpa
@@ -37,7 +37,7 @@ public class E2Deserializer {
         this.entityManager = entityManager;
     }
 
-    public void deserializeAll() throws ReflectiveOperationException {
+    public void deserializeAll() {
         for (E2Entity entity : payload.entities()) {
             for (E2Element element : entity.elementsChanged()) {
                 deserializeElement(element);
@@ -45,7 +45,7 @@ public class E2Deserializer {
         }
     }
 
-    public Object deserializeElement(E2Element element) throws ReflectiveOperationException {
+    public Object deserializeElement(E2Element element) {
         Object itemInstance = instances.get(element);
         if (itemInstance == null && !element.isDeleted()) {
             EntityInstance instanceObject = findEntity(element);
@@ -57,26 +57,14 @@ public class E2Deserializer {
             ElementWriter writer = metamodel.write(itemInstance);
             for (AttributeWriter attributeWriter : writer) {
                 if (attributeWriter.isAssociation()) {
-                    E2Reference reference = attributes.get(attributeWriter.name()).map(E2Attribute::reference).orElse(null);
-                    if (reference != null) {
-                        Optional<E2Element> refElement = payload.referencedElement(reference);
+                    Object instance = attributes
+                            .get(attributeWriter.name())
+                            .map(E2Attribute::reference)
+                            .map((Function<E2Reference, Object>) reference1 -> payload.referencedElement(reference1).map(this::deserializeElement));
 
-                        if (refElement.isPresent()) {
-                            E2Element referencedElement = refElement.get();
-                            Object instance = deserializeElement(referencedElement);
-                            attributeWriter.setValue(instance);
-                        }
-                    }
+                    attributeWriter.setValue(instance);
                 } else {
-                    String value = null;
-                    Optional<E2Attribute> attribute = attributes.get(attributeWriter.name());
-                    if (attribute.isPresent()) {
-                        value = attribute.get().value().string();
-                    }
-
-                    if (value != null) {
-                        attributeWriter.setSimpleValue(value);
-                    }
+                    attributes.get(attributeWriter.name()).map(e2Attribute -> e2Attribute.value().string()).ifPresent(attributeWriter::setSimpleValue);
                 }
             }
             writeElement(itemInstance, instanceObject.isNew());
@@ -84,15 +72,18 @@ public class E2Deserializer {
         return itemInstance;
     }
 
-    private EntityInstance findEntity(E2Element element) throws ReflectiveOperationException {
-        boolean isNew = false;
-        Object entityId = getElementId(element);
-        Object instance = entityManager.find(Class.forName(element.entityName()), entityId);
-        if (instance == null) {
-            instance = createInstance(element.entityName());
-            isNew = true;
+    private EntityInstance findEntity(E2Element element) {
+        try {
+            boolean isNew = false;
+            Object instance = entityManager.find(Class.forName(element.entityName()), getElementId(element));
+            if (instance == null) {
+                instance = createInstance(element.entityName());
+                isNew = true;
+            }
+            return new EntityInstance(isNew, instance);
+        } catch (ClassNotFoundException e) {
+            throw new E2DeserializationException(e);
         }
-        return new EntityInstance(isNew, instance);
     }
 
     private void writeElement(Object instance, boolean isNew) {
@@ -103,29 +94,34 @@ public class E2Deserializer {
         }
     }
 
-    private Object getElementId(E2Element element) throws ReflectiveOperationException {
+    private Object getElementId(E2Element element) {
         String uid = element.getUid();
-        String entityName = element.entityName();
-        Object result = createInstance(entityName);
+        Object result = createInstance(element.entityName());
 
         E2Attributes attributes = element.attributes;
 
         if (element.isSynth()) {
-            String val = attributes.get("id").map(attribute -> attribute.value().string()).orElse(null);
-            ElementReader reader = metamodel.read(result);
-            for (AttributeReader attributeReader : reader) {
-                if (attributeReader.name().equals("id")) {
-                    return simpleDeserializers.attributeValue(attributeReader.attribute(), val);
+            String value = attributes.get("id").map(attribute -> attribute.value().string()).orElse(null);
+            if (value != null) {
+                ElementReader reader = metamodel.read(result);
+                for (AttributeReader attributeReader : reader) {
+                    if (attributeReader.name().equals("id")) {
+                        return simpleDeserializers.attributeValue(attributeReader.attributeType(), value);
+                    }
                 }
             }
         }
         return uid;
     }
 
-    private Object createInstance(String className) throws ReflectiveOperationException {
-        Class<?> itemClass = Class.forName(className);
-        Constructor<?> constructor = itemClass.getDeclaredConstructor();
-        return constructor.newInstance();
+    private Object createInstance(String className) {
+        try {
+            Class<?> itemClass = Class.forName(className);
+            Constructor<?> constructor = itemClass.getDeclaredConstructor();
+            return constructor.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new E2DeserializationException(e);
+        }
     }
 
     private class EntityInstance {

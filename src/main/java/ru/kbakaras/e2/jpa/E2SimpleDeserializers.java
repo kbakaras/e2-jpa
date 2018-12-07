@@ -1,6 +1,5 @@
 package ru.kbakaras.e2.jpa;
 
-import javax.persistence.metamodel.Attribute;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -29,13 +28,13 @@ public class E2SimpleDeserializers {
         return map.containsKey(clazz);
     }
 
-    public Object attributeValue(Attribute attr, String value) {
+    public Object attributeValue(Class attr, String value) {
         @SuppressWarnings("unchecked")
-        Function<String, Object> ss = map.get(attr.getJavaType());
+        Function<String, Object> ss = map.get(attr);
         if (ss != null) {
             return ss.apply(value);
         } else {
-            throw new E2SerializationException("Unable to locate simple deserializer for type " + attr.getJavaType());
+            throw new E2SerializationException("Unable to locate simple deserializer for type " + attr);
         }
     }
 }

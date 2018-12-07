@@ -132,8 +132,8 @@ public class E2Metamodel {
                 return simpleSerializers.toString(attribute, element);
             }
 
-            public Attribute attribute() {
-                return attribute;
+            public Class attributeType() {
+                return attribute.getJavaType();
             }
         }
     }
@@ -180,7 +180,8 @@ public class E2Metamodel {
         private Function<Object, UUID> uidGetter;
         private Set<String> skip = new HashSet<>();
 
-        EntitySetup() {}
+        EntitySetup() {
+        }
 
         private void validate() {
             if (!valid) {
@@ -222,7 +223,7 @@ public class E2Metamodel {
         Set<String> skipped() {
             return skip;
         }
-   }
+    }
 
     public class ElementWriter implements Iterable<ElementWriter.AttributeWriter> {
         private Object element;
@@ -266,6 +267,10 @@ public class E2Metamodel {
                 return attribute.getName();
             }
 
+            public boolean isCollection() {
+                return attribute.isCollection();
+            }
+
             public void setValue(Object value) {
                 Field field = ((Field) attribute.getJavaMember());
                 try {
@@ -276,11 +281,11 @@ public class E2Metamodel {
             }
 
             public void setSimpleValue(String value) {
-                setValue(simpleDeserializers.attributeValue(attribute, value));
+                setValue(simpleDeserializers.attributeValue(attributeType(), value));
             }
 
-            public Attribute attribute() {
-                return attribute;
+            public Class attributeType() {
+                return attribute.getJavaType();
             }
         }
     }
