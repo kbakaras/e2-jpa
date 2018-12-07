@@ -10,7 +10,6 @@ import java.util.function.Function;
  * project: e2-jpa
  * author:  kostrovik
  * date:    2018-12-06
- * github:  https://github.com/kostrovik/e2-jpa
  */
 public class E2SimpleDeserializers {
     private Map<Class, Function> map = new HashMap<>();

@@ -117,6 +117,10 @@ public class E2Metamodel {
             public String simpleValue() {
                 return simpleSerializers.toString(attribute, element);
             }
+
+            public Attribute attribute() {
+                return attribute;
+            }
         }
     }
 
@@ -211,6 +215,10 @@ public class E2Metamodel {
 
             public void setSimpleValue(String value) {
                 setValue(simpleDeserializers.attributeValue(attribute, value));
+            }
+
+            public Attribute attribute() {
+                return attribute;
             }
         }
     }
