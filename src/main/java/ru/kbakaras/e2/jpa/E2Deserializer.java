@@ -7,14 +7,17 @@ import ru.kbakaras.e2.message.E2Attributes;
 import ru.kbakaras.e2.message.E2Element;
 import ru.kbakaras.e2.message.E2Entity;
 import ru.kbakaras.e2.message.E2Payload;
+import ru.kbakaras.e2.message.E2Row;
+import ru.kbakaras.e2.message.E2Table;
 
 import javax.annotation.Resource;
 import javax.persistence.EntityManager;
 import javax.persistence.metamodel.EntityType;
 import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -56,20 +59,38 @@ public class E2Deserializer {
             ElementWriter writer = metamodel.write(itemInstance);
             for (AttributeWriter attributeWriter : writer) {
                 if (attributeWriter.isAssociation()) {
-                    Optional<Object> instance = attributes
+                    attributes
                             .get(attributeWriter.name())
                             .map(E2Attribute::reference)
                             .map(e2Reference -> payload.referencedElement(e2Reference).orElse(null))
-                            .map(this::deserializeElement);
-
-                    instance.ifPresent(attributeWriter::setValue);
+                            .map(this::deserializeElement)
+                            .ifPresent(attributeWriter::setValue);
+                } else if (attributeWriter.isCollection()) {
+                    element.table(attributeWriter.name())
+                            .map(this::deserializeCollection)
+                            .ifPresent(attributeWriter::setValue);
                 } else {
-                    attributes.get(attributeWriter.name()).map(e2Attribute -> e2Attribute.value().string()).ifPresent(attributeWriter::setSimpleValue);
+                    attributes
+                            .get(attributeWriter.name())
+                            .map(e2Attribute -> e2Attribute.value().string())
+                            .ifPresent(attributeWriter::setSimpleValue);
                 }
             }
             writeElement(itemInstance, instanceObject.isNew());
         }
         return itemInstance;
+    }
+
+    private List<Object> deserializeCollection(E2Table table) {
+        List<Object> collection = new ArrayList<>();
+        for (E2Row e2Row : table) {
+            e2Row.attributes.get("item")
+                    .map(attribute -> payload.referencedElement(attribute.reference()).orElse(null))
+                    .map(this::deserializeElement)
+                    .ifPresent(collection::add);
+        }
+
+        return collection;
     }
 
     private EntityInstance findEntity(E2Element element) {
@@ -101,7 +122,10 @@ public class E2Deserializer {
             EntityType type = metamodel.getEntityType(Class.forName(element.entityName()));
 
             if (element.isSynth()) {
-                String value = attributes.get("id").map(attribute -> attribute.value().string()).orElse(null);
+                String value = attributes
+                        .get("id")
+                        .map(attribute -> attribute.value().string())
+                        .orElse(null);
                 if (value != null) {
                     return simpleDeserializers.attributeValue(type.getIdType().getJavaType(), value);
                 }
