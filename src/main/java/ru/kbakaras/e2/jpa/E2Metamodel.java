@@ -17,7 +17,10 @@ import java.util.UUID;
 import java.util.function.Function;
 
 public class E2Metamodel {
-    @Resource private E2SimpleSerializers simpleSerializers;
+    @Resource
+    private E2SimpleSerializers simpleSerializers;
+    @Resource
+    private E2SimpleDeserializers simpleDeserializers;
 
     private UUID systemUid;
     private String systemName;
@@ -45,6 +48,13 @@ public class E2Metamodel {
         return new ElementReader(element);
     }
 
+    public ElementWriter write(Object element) {
+        return new ElementWriter(element);
+    }
+
+    public EntityType getEntityType(Class entityClass) {
+        return metamodel.entity(entityClass);
+    }
 
     public class ElementReader implements Iterable<ElementReader.AttributeReader> {
         private Object element;
@@ -185,7 +195,8 @@ public class E2Metamodel {
         private Function<Object, UUID> uidGetter;
         private Set<String> skip = new HashSet<>();
 
-        EntitySetup() {}
+        EntitySetup() {
+        }
 
         private void validate() {
             if (!valid) {
@@ -227,6 +238,66 @@ public class E2Metamodel {
         Set<String> skipped() {
             return skip;
         }
-   }
+    }
 
+    public class ElementWriter implements Iterable<ElementWriter.AttributeWriter> {
+        private Object element;
+        private EntityType entity;
+
+        private ElementWriter(Object element) {
+            this.element = element;
+            this.entity = metamodel.entity(element.getClass());
+        }
+
+        @Override
+        public Iterator<ElementWriter.AttributeWriter> iterator() {
+            return new Iterator<ElementWriter.AttributeWriter>() {
+                @SuppressWarnings("unchecked")
+                private Iterator<Attribute> iter = entity.getAttributes().iterator();
+
+                @Override
+                public boolean hasNext() {
+                    return iter.hasNext();
+                }
+
+                @Override
+                public ElementWriter.AttributeWriter next() {
+                    return new ElementWriter.AttributeWriter(iter.next());
+                }
+            };
+        }
+
+        public class AttributeWriter {
+            private Attribute attribute;
+
+            public AttributeWriter(Attribute attribute) {
+                this.attribute = attribute;
+            }
+
+            public boolean isAssociation() {
+                return attribute.isAssociation();
+            }
+
+            public String name() {
+                return attribute.getName();
+            }
+
+            public boolean isCollection() {
+                return attribute.isCollection();
+            }
+
+            public void setValue(Object value) {
+                Field field = ((Field) attribute.getJavaMember());
+                try {
+                    field.set(element, value);
+                } catch (IllegalAccessException e) {
+                    throw new E2DeserializationException(e);
+                }
+            }
+
+            public void setSimpleValue(String value) {
+                setValue(simpleDeserializers.attributeValue(attribute.getJavaType(), value));
+            }
+        }
+    }
 }
