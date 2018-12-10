@@ -1,7 +1,5 @@
 package ru.kbakaras.e2.jpa;
 
-import ru.kbakaras.e2.jpa.E2Metamodel.ElementReader;
-import ru.kbakaras.e2.jpa.E2Metamodel.ElementReader.AttributeReader;
 import ru.kbakaras.e2.jpa.E2Metamodel.ElementWriter;
 import ru.kbakaras.e2.jpa.E2Metamodel.ElementWriter.AttributeWriter;
 import ru.kbakaras.e2.message.E2Attribute;
@@ -9,14 +7,15 @@ import ru.kbakaras.e2.message.E2Attributes;
 import ru.kbakaras.e2.message.E2Element;
 import ru.kbakaras.e2.message.E2Entity;
 import ru.kbakaras.e2.message.E2Payload;
-import ru.kbakaras.e2.message.E2Reference;
 
 import javax.annotation.Resource;
 import javax.persistence.EntityManager;
+import javax.persistence.metamodel.EntityType;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * project: e2-jpa
@@ -57,12 +56,13 @@ public class E2Deserializer {
             ElementWriter writer = metamodel.write(itemInstance);
             for (AttributeWriter attributeWriter : writer) {
                 if (attributeWriter.isAssociation()) {
-                    Object instance = attributes
+                    Optional<Object> instance = attributes
                             .get(attributeWriter.name())
                             .map(E2Attribute::reference)
-                            .map((Function<E2Reference, Object>) reference1 -> payload.referencedElement(reference1).map(this::deserializeElement));
+                            .map(e2Reference -> payload.referencedElement(e2Reference).orElse(null))
+                            .map(this::deserializeElement);
 
-                    attributeWriter.setValue(instance);
+                    instance.ifPresent(attributeWriter::setValue);
                 } else {
                     attributes.get(attributeWriter.name()).map(e2Attribute -> e2Attribute.value().string()).ifPresent(attributeWriter::setSimpleValue);
                 }
@@ -96,22 +96,20 @@ public class E2Deserializer {
 
     private Object getElementId(E2Element element) {
         String uid = element.getUid();
-        Object result = createInstance(element.entityName());
+        try {
+            E2Attributes attributes = element.attributes;
+            EntityType type = metamodel.getEntityType(Class.forName(element.entityName()));
 
-        E2Attributes attributes = element.attributes;
-
-        if (element.isSynth()) {
-            String value = attributes.get("id").map(attribute -> attribute.value().string()).orElse(null);
-            if (value != null) {
-                ElementReader reader = metamodel.read(result);
-                for (AttributeReader attributeReader : reader) {
-                    if (attributeReader.name().equals("id")) {
-                        return simpleDeserializers.attributeValue(attributeReader.attributeType(), value);
-                    }
+            if (element.isSynth()) {
+                String value = attributes.get("id").map(attribute -> attribute.value().string()).orElse(null);
+                if (value != null) {
+                    return simpleDeserializers.attributeValue(type.getIdType().getJavaType(), value);
                 }
             }
+            return UUID.fromString(uid);
+        } catch (ReflectiveOperationException e) {
+            throw new E2DeserializationException(e);
         }
-        return uid;
     }
 
     private Object createInstance(String className) {

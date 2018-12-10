@@ -37,6 +37,10 @@ public class E2Metamodel {
         return new ElementWriter(element);
     }
 
+    public EntityType getEntityType(Class entityClass) {
+        return metamodel.entity(entityClass);
+    }
+
     public class ElementReader implements Iterable<ElementReader.AttributeReader> {
         private Object element;
         private EntityType entity;
@@ -130,10 +134,6 @@ public class E2Metamodel {
 
             public String simpleValue() {
                 return simpleSerializers.toString(attribute, element);
-            }
-
-            public Class attributeType() {
-                return attribute.getJavaType();
             }
         }
     }
@@ -281,11 +281,7 @@ public class E2Metamodel {
             }
 
             public void setSimpleValue(String value) {
-                setValue(simpleDeserializers.attributeValue(attributeType(), value));
-            }
-
-            public Class attributeType() {
-                return attribute.getJavaType();
+                setValue(simpleDeserializers.attributeValue(attribute.getJavaType(), value));
             }
         }
     }
