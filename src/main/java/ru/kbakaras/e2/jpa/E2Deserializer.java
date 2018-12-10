@@ -10,7 +10,6 @@ import ru.kbakaras.e2.message.E2Payload;
 import ru.kbakaras.e2.message.E2Row;
 import ru.kbakaras.e2.message.E2Table;
 
-import javax.annotation.Resource;
 import javax.persistence.EntityManager;
 import javax.persistence.metamodel.EntityType;
 import java.lang.reflect.Constructor;
@@ -30,8 +29,6 @@ public class E2Deserializer {
     private E2Payload payload;
     private Map<E2Element, Object> instances = new HashMap<>();
     private EntityManager entityManager;
-    @Resource
-    private E2SimpleDeserializers simpleDeserializers;
 
     public E2Deserializer(E2Metamodel metamodel, E2Payload payload, EntityManager entityManager) {
         this.metamodel = metamodel;
@@ -127,7 +124,7 @@ public class E2Deserializer {
                         .map(attribute -> attribute.value().string())
                         .orElse(null);
                 if (value != null) {
-                    return simpleDeserializers.attributeValue(type.getIdType().getJavaType(), value);
+                    return metamodel.deserializeValue(type.getIdType().getJavaType(), value);
                 }
             }
             return UUID.fromString(uid);

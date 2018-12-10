@@ -29,9 +29,9 @@ public class E2Metamodel {
     private Map<Class, EntitySetup> setups = new HashMap<>();
 
     public E2Metamodel(UUID systemUid, String systemName, EntityManagerFactory emf) {
-        this.systemUid  = systemUid;
+        this.systemUid = systemUid;
         this.systemName = systemName;
-        this.metamodel  = emf.getMetamodel();
+        this.metamodel = emf.getMetamodel();
     }
 
 
@@ -42,7 +42,6 @@ public class E2Metamodel {
     public String getSystemName() {
         return systemName;
     }
-
 
     public ElementReader read(Object element) {
         return new ElementReader(element);
@@ -296,8 +295,16 @@ public class E2Metamodel {
             }
 
             public void setSimpleValue(String value) {
-                setValue(simpleDeserializers.attributeValue(attribute.getJavaType(), value));
+                setValue(deserializeValue(attribute.getJavaType(), value));
             }
         }
+    }
+
+    public Object deserializeValue(Class type, String value) {
+        return simpleDeserializers.attributeValue(type, value);
+    }
+
+    public String serializeValue(Class type, Object value) {
+        return simpleSerializers.toString(type, value);
     }
 }

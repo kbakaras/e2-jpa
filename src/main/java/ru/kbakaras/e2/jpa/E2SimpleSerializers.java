@@ -14,6 +14,7 @@ public class E2SimpleSerializers {
         map.put(clazz, func);
         return this;
     }
+
     @SuppressWarnings("unchecked")
     public <F> E2SimpleSerializers registerNullable(Class<F> clazz, Function<F, String> func) {
         map.put(clazz, value -> Optional.ofNullable((F) value).map(func).orElse(null));
@@ -25,12 +26,16 @@ public class E2SimpleSerializers {
     }
 
     public String toString(Attribute attr, Object element) {
+        return toString(attr.getJavaType(), attributeValue(attr, element));
+    }
+
+    public String toString(Class valueType, Object value) {
         @SuppressWarnings("unchecked")
-        Function<Object, String> ss = map.get(attr.getJavaType());
+        Function<Object, String> ss = map.get(valueType);
         if (ss != null) {
-            return ss.apply(attributeValue(attr, element));
+            return ss.apply(value);
         } else {
-            throw new E2SerializationException("Unable to locate simple serializer for type " + attr.getJavaType());
+            throw new E2SerializationException("Unable to locate simple serializer for type " + valueType);
         }
     }
 
