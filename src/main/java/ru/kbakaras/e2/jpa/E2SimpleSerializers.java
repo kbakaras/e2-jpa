@@ -26,13 +26,7 @@ public class E2SimpleSerializers {
     }
 
     public String toString(Attribute attr, Object element) {
-        @SuppressWarnings("unchecked")
-        Function<Object, String> ss = map.get(attr.getJavaType());
-        if (ss != null) {
-            return ss.apply(attributeValue(attr, element));
-        } else {
-            throw new E2SerializationException("Unable to locate simple serializer for type " + attr.getJavaType());
-        }
+        return toString(attr.getJavaType(), attributeValue(attr, element));
     }
 
     public String toString(Class valueType, Object value) {
