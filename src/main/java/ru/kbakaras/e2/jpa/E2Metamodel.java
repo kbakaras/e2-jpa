@@ -19,12 +19,27 @@ import java.util.function.Function;
 public class E2Metamodel {
     @Resource private E2SimpleSerializers simpleSerializers;
 
+    private UUID systemUid;
+    private String systemName;
+
     private Metamodel metamodel;
     private Map<Class, EntitySetup> setups = new HashMap<>();
 
-    public E2Metamodel(EntityManagerFactory emf) {
-        this.metamodel = emf.getMetamodel();
+    public E2Metamodel(UUID systemUid, String systemName, EntityManagerFactory emf) {
+        this.systemUid  = systemUid;
+        this.systemName = systemName;
+        this.metamodel  = emf.getMetamodel();
     }
+
+
+    public UUID getSystemUid() {
+        return systemUid;
+    }
+
+    public String getSystemName() {
+        return systemName;
+    }
+
 
     public ElementReader read(Object element) {
         return new ElementReader(element);
