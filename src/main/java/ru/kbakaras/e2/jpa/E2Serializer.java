@@ -70,11 +70,27 @@ public class E2Serializer {
                 }
             }
 
+            if (changed) {
+                onChanged(element);
+            }
+
         } else if (changed) {
             payload.referencedElement(reference)
-                    .ifPresent(e2Element -> e2Element.setChanged(true));
+                    .filter(e2Element -> !e2Element.isChanged())
+                    .ifPresent(e2Element -> {
+                        e2Element.setChanged(true);
+                        onChanged(element);
+                    });
         }
 
         return reference;
+   }
+
+   private void onChanged(Object element) {
+       metamodel.getTied(element.getClass())
+               .map(func -> func.apply(element))
+               .ifPresent(collection -> collection.forEach(
+                       found -> serialize(found, true)
+               ));
    }
 }

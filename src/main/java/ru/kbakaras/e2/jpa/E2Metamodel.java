@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -53,6 +54,11 @@ public class E2Metamodel {
 
     public EntityType getEntityType(Class entityClass) {
         return metamodel.entity(entityClass);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Optional<Function<Object, Collection>> getTied(Class entityClass) {
+        return getSetup(entityClass).getTied();
     }
 
     public class ElementReader implements Iterable<ElementReader.AttributeReader> {
@@ -193,6 +199,7 @@ public class E2Metamodel {
         private boolean synth;
         private Function<Object, UUID> uidGetter;
         private Set<String> skip = new HashSet<>();
+        private Function<Object, Collection> tied;
 
         EntitySetup() {
         }
@@ -223,6 +230,19 @@ public class E2Metamodel {
             return this;
         }
 
+        /**
+         * Позволяет задать функцию, которая будет вызвана в результате удачной
+         * сериализации изменённого элемента данного класса. В функцию будет передан сериализованный
+         * элемент, а в ответ она может вернуть коллекцию элементов любых сущностей,
+         * которые должны быть сериализованы совместно с основным элементом. При сериализации
+         * они также будут помечены, как изменённые.
+         */
+        @SuppressWarnings("unchecked")
+        public EntitySetup<T> tied(Function<T, Collection> tied) {
+            this.tied = (Function<Object, Collection>) tied;
+            return this;
+        }
+
 
         boolean synth() {
             validate();
@@ -236,6 +256,10 @@ public class E2Metamodel {
 
         Set<String> skipped() {
             return skip;
+        }
+
+        Optional<Function<Object, Collection>> getTied() {
+            return Optional.ofNullable(tied);
         }
     }
 

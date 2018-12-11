@@ -11,7 +11,6 @@ import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
 import javax.persistence.metamodel.EntityType;
-import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,11 +19,14 @@ public class E2RequestProcessor {
     private E2Response response;
     private E2Serializer e2Serializer;
 
+    private E2Metamodel metamodel;
+
     private EntityManager em;
 
     public E2RequestProcessor(E2Request request, E2Metamodel e2Metamodel, EntityManager entityManager) {
         this.request = request;
         this.em = entityManager;
+        this.metamodel = e2Metamodel;
 
         response = new E2Response(E2.ELEMENT);
         e2Serializer = new E2Serializer(e2Metamodel,
@@ -53,14 +55,7 @@ public class E2RequestProcessor {
             er.filters().forEach(filter -> {
                 Class<?> attributeClass = meta.getAttribute(filter.attributeName()).getJavaType();
 
-                Object value = null;
-                if (attributeClass.equals(YearMonth.class)) {
-                    value = YearMonth.parse(filter.value().string());
-                } else if (attributeClass.equals(Integer.class)) {
-                    value = new Integer(filter.value().string());
-                } else {
-                    value = filter.value().string();
-                }
+                Object value = metamodel.deserializeValue(attributeClass, filter.value().string());
 
                 if (filter.condition().equals("equal")) {
                     predicates.add(cBuilder.equal(cRoot.get(filter.attributeName()), value));
